@@ -26,6 +26,26 @@ config NCS_SAMPLE_EMPTY_APP_CORE_CHILD_IMAGE
 	  Add empty_app_core as a child image (application core).
 	  Used by samples that run on the network core only.
 
+config NCS_CUSTOM_CHILD_IMAGE
+    bool "Add custom child image"
+    default n
+
+if NCS_CUSTOM_CHILD_IMAGE
+
+config NCS_CUSTOM_CHILD_IMAGE_NAME
+	string "Name of custom child image"
+	default "blinky"
+	help
+	  Name of custom child image. Default blinky.
+
+config NCS_CUSTOM_CHILD_IMAGE_PATH
+	string "Path to custom child image directory"
+	default "${ZEPHYR_BASE}/samples/basic/blinky"
+	help
+	  Path to custom child image directory. Default blinky sample.
+
+endif
+
 config NCS_INCLUDE_RPMSG_CHILD_IMAGE
 	bool "Include RPMsg sample on netcore"
 	depends on SOC_NRF5340_CPUAPP && (BT_RPMSG || NRF_802154_SER_HOST || BT_RPC)

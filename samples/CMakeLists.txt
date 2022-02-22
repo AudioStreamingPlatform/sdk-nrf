@@ -102,28 +102,32 @@ if (CONFIG_NCS_SAMPLE_REMOTE_SHELL_CHILD_IMAGE)
     )
 endif()
 
-if (CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE)
+if (CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE OR CONFIG_NCS_CUSTOM_CHILD_IMAGE)
+  if (CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE)
+    if (CONFIG_NCS_SAMPLE_MULTIPROTOCOL_RPMSG_CHILD_IMAGE)
+      set(CHILD_IMAGE_NAME "multiprotocol_rpmsg")
+      set(CHILD_IMAGE_PATH "${NRF_DIR}/samples/nrf5340/multiprotocol_rpmsg")
 
-  if (CONFIG_NCS_SAMPLE_MULTIPROTOCOL_RPMSG_CHILD_IMAGE)
-    set(CHILD_IMAGE_NAME "multiprotocol_rpmsg")
-    set(CHILD_IMAGE_PATH "${NRF_DIR}/samples/nrf5340/multiprotocol_rpmsg")
+    elseif (CONFIG_NCS_SAMPLE_HCI_RPMSG_CHILD_IMAGE)
+      set(CHILD_IMAGE_NAME "hci_rpmsg")
+      set(CHILD_IMAGE_PATH "${ZEPHYR_BASE}/samples/bluetooth/hci_rpmsg")
 
-  elseif (CONFIG_NCS_SAMPLE_HCI_RPMSG_CHILD_IMAGE)
-    set(CHILD_IMAGE_NAME "hci_rpmsg")
-    set(CHILD_IMAGE_PATH "${ZEPHYR_BASE}/samples/bluetooth/hci_rpmsg")
+    elseif (CONFIG_NCS_SAMPLE_802154_RPMSG_CHILD_IMAGE)
+      set(CHILD_IMAGE_NAME "802154_rpmsg")
+      set(CHILD_IMAGE_PATH "${ZEPHYR_BASE}/samples/boards/nrf/ieee802154/802154_rpmsg")
 
-  elseif (CONFIG_NCS_SAMPLE_802154_RPMSG_CHILD_IMAGE)
-    set(CHILD_IMAGE_NAME "802154_rpmsg")
-    set(CHILD_IMAGE_PATH "${ZEPHYR_BASE}/samples/boards/nrf/ieee802154/802154_rpmsg")
+    elseif (CONFIG_NCS_SAMPLE_RPC_HOST_CHILD_IMAGE)
+      set(CHILD_IMAGE_NAME "rpc_host")
+      set(CHILD_IMAGE_PATH "${NRF_DIR}/samples/bluetooth/rpc_host")
 
-  elseif (CONFIG_NCS_SAMPLE_RPC_HOST_CHILD_IMAGE)
-    set(CHILD_IMAGE_NAME "rpc_host")
-    set(CHILD_IMAGE_PATH "${NRF_DIR}/samples/bluetooth/rpc_host")
-
+    else()
+      # If we get here, something is wrong with the Kconfig resolution
+      message(WARNING "CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE is set but "
+        "couldn't resolve which RPMsg sample to add.")
+    endif()
   else()
-    # If we get here, something is wrong with the Kconfig resolution
-    message(WARNING "CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE is set but "
-      "couldn't resolve which RPMsg sample to add.")
+    set(CHILD_IMAGE_NAME ${CONFIG_NCS_CUSTOM_CHILD_IMAGE_NAME})
+    set(CHILD_IMAGE_PATH ${CONFIG_NCS_CUSTOM_CHILD_IMAGE_PATH})
   endif()
 
   # Only include a child image if both image name and path have been defined.
