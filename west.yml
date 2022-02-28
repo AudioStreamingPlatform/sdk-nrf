@@ -31,6 +31,8 @@ manifest:
       url-base: https://github.com/NordicSemiconductor
     - name: memfault
       url-base: https://github.com/memfault
+    - name: mozart
+      url-base: https://github.com/AudioStreamingPlatform
 
   # If not otherwise specified, the projects below should be obtained
   # from the ncs remote.
@@ -103,8 +105,9 @@ manifest:
       revision: 47399f055431513b5dfcd9d1fd1ec5dc5c96a252
     - name: mcuboot
       repo-path: sdk-mcuboot
-      revision: v1.9.99-ncs2
+      revision: emdj/v1.9.99-ncs2-mozart
       path: bootloader/mcuboot
+      remote: mozart
     - name: mbedtls-nrf
       path: mbedtls
       repo-path: sdk-mbedtls
