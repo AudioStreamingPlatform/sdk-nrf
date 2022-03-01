@@ -34,15 +34,15 @@ if NCS_CUSTOM_CHILD_IMAGE
 
 config NCS_CUSTOM_CHILD_IMAGE_NAME
 	string "Name of custom child image"
-	default "blinky"
+	default "hello_world"
 	help
-	  Name of custom child image. Default blinky.
+	  Name of custom child image. Default hello_world.
 
 config NCS_CUSTOM_CHILD_IMAGE_PATH
 	string "Path to custom child image directory"
-	default "${ZEPHYR_BASE}/samples/basic/blinky"
+	default "${ZEPHYR_BASE}/samples/hello_world"
 	help
-	  Path to custom child image directory. Default blinky sample.
+	  Path to custom child image directory. Default hello_world sample.
 
 endif
 
