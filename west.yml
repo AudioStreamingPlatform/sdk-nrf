@@ -35,6 +35,8 @@ manifest:
       url-base: https://github.com/PelionIoT
     - name: memfault
       url-base: https://github.com/memfault
+    - name: mozart
+      url-base: https://github.com/orgs/AudioStreamingPlatform
 
   # If not otherwise specified, the projects below should be obtained
   # from the ncs remote.
@@ -101,6 +103,7 @@ manifest:
       repo-path: sdk-mcuboot
       revision: v1.7.99-ncs4-mozart-1
       path: bootloader/mcuboot
+      remote: mozart
     - name: nrfxlib
       repo-path: sdk-nrfxlib
       path: nrfxlib
