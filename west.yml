@@ -101,7 +101,7 @@ manifest:
     # changes.
     - name: mcuboot
       repo-path: sdk-mcuboot
-      revision: v1.7.99-ncs4-mozart-1
+      revision: v1.7.99-ncs4-mozart-2
       path: bootloader/mcuboot
       remote: mozart
     - name: nrfxlib
