@@ -318,11 +318,7 @@ static bool validate_firmware(uint32_t fw_dst_address, uint32_t fw_src_address,
 
 	if (!within(reset_vector, fw_dst_address, fw_dst_end)) {
 		PRINT("Reset handler is not within signed region.\n\r");
-		/* FIXME: Ignore this check for now at it prevents radio_test from being flashed.
-		Problem is that reset_vector is set based on the current app, so when flashing a smaller
-		app it falls outside the region - which is defined by the app being flashed.
 		return false;
-		*/
 	}
 
 	fw_val_info = validation_info_find(fw_src_address + fwinfo->size, 4);
