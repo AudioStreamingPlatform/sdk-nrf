@@ -39,6 +39,100 @@ struct counter_collection {
 #define TYPE_COUNTERS 1 /* Type referring to counter collection. */
 #define COUNTER_DESC_VERSION 1 /* Counter description value for firmware version. */
 
+
+#ifdef PM_S0_OFFSET /* partition manager available */
+/* upgradable mcuboot bootloader option, to validate and select which mcuboot slot to boot:
+ * optional trailer at the end of of flash partitions for mcuboot slot0 and slot1
+ * 1) mcuboot erase flash sector for mcuboot_image_trailer
+ * 2) mcuboot writes new image to flash (e.g. "mcumgr image upload")
+ * 3) mcuboot mcuboot_image_trailer with mcuboot_image_trailer_init
+ * 4) device is rebooted via "mcumgr reboot" or external reset
+ * 5) b0 checks if both mcuboot slots have a valid mcuboot_image_trailer.magic, if not normal boot proceeds
+ * 6) b0 changes mcuboot_image_trailer.status from TESTING to BOOTING (if any TESTING)
+ * 7) b0 gives slot 1st priority if its trailer.status=TESTING/ACTIVE
+ * 8) mcuboot changes trailer.status from BOOTING to ACTIVE if confirmed by "mcumgr image confirm"
+ *    mcuboot also mark passive slot INVALID, to avoid booting in that (except fallback)
+ */
+
+/* Note1: interface cloned by mcuboot/boot/boot_serial/src/boot_serial.c */
+/* Note2: these constants rely on bits in flash can be changed from 1 to 0 without erasing */
+#define MCUBOOT_IMAGE_TRAILER_STATUS_TESTING  0xFFFFFFFE
+#define MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING  0xFFFFFFFC
+#define MCUBOOT_IMAGE_TRAILER_STATUS_ACTIVE   0xFFFFFFF8
+#define MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE 0x00000000
+#define MCUBOOT_IMAGE_TRAILER_MAGIC_SZ 3
+
+typedef struct {
+    uint32_t status; /* mcuboot writes TESTING or ACTIVE, b0 writes BOOTING if TESTING found */
+    uint32_t magic[MCUBOOT_IMAGE_TRAILER_MAGIC_SZ]; /* mcuboot writs*/
+} mcuboot_image_trailer;
+
+const mcuboot_image_trailer mcuboot_image_trailer_init = {
+	.status = MCUBOOT_IMAGE_TRAILER_STATUS_TESTING,
+	.magic = {
+		0x1234beef,
+		0xbeef1234,
+		0x1234beef
+	}
+};
+
+static uint32_t check_and_fix_image_trailer(const char* prefix, const mcuboot_image_trailer* trailer)
+{
+	int result = MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE;
+	if (memcmp(&trailer->magic, &mcuboot_image_trailer_init.magic, sizeof(trailer->magic)) == 0) {
+		result = trailer->status;
+		switch (trailer->status) {
+		case MCUBOOT_IMAGE_TRAILER_STATUS_TESTING:
+			/* change status to BOOTING */
+			printk("%s: TESTING => BOOTING\n\r", prefix);
+			__DSB(); /* Because of nRF9160 Erratum 7 */
+			nrfx_nvmc_word_write((uint32_t)&trailer->status, MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING:
+			printk("%s: BOOTING => INACTIVE (boot once)\n\r", prefix);
+			__DSB(); /* Because of nRF9160 Erratum 7 */
+			nrfx_nvmc_word_write((uint32_t)&trailer->status, MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_ACTIVE:
+			printk("%s: ACTIVE\n\r", prefix);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE:
+			printk("%s: INACTIVE\n\r", prefix);
+			break;
+		default:
+			printk("%s: Unknown trailer status=0x%X\n\r", trailer->status);
+		}
+	}
+	return result;
+}
+
+slot_priority slot_priority_from_image_trailers(void)
+{
+	int result = SLOT_PRIORITY_S0;
+	uint32_t s0_addr = s0_address_read();
+	uint32_t s1_addr = s1_address_read();
+	if (s0_addr == PM_S0_OFFSET && s1_addr == PM_S1_OFFSET) {
+		const mcuboot_image_trailer* s0 = (mcuboot_image_trailer*)(s0_addr + PM_S0_SIZE - sizeof(mcuboot_image_trailer));
+		const mcuboot_image_trailer* s1 = (mcuboot_image_trailer*)(s1_addr + PM_S1_SIZE - sizeof(mcuboot_image_trailer));
+		uint32_t s0_status = check_and_fix_image_trailer("slot0", s0);
+		uint32_t s1_status = check_and_fix_image_trailer("slot1", s1);
+		if (s0_status == MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE || s1_status == MCUBOOT_IMAGE_TRAILER_STATUS_TESTING) {
+			if (s1_status != MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE)
+				result = SLOT_PRIORITY_S1;
+		}
+	}
+	return result;
+}
+
+#else
+
+slot_priority slot_priority_from_image_trailers(void)
+{
+	return SLOT_PRIORITY_S0;
+}
+#endif
+
+
 uint32_t s0_address_read(void)
 {
 	uint32_t addr = BL_STORAGE->s0_address;
