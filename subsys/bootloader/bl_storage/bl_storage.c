@@ -5,12 +5,14 @@
  */
 
 #include "bl_storage.h"
+#include <inttypes.h>
 #include <string.h>
 #include <errno.h>
 #include <nrf.h>
 #include <assert.h>
 #include <nrfx_nvmc.h>
 #include <pm_config.h>
+#include <zephyr/sys/printk.h>
 
 /** A single monotonic counter. It consists of a description value, a 'type',
  *  to know what this counter counts. Further, it has a number of slots
@@ -38,6 +40,120 @@ struct counter_collection {
 
 #define TYPE_COUNTERS 1 /* Type referring to counter collection. */
 #define COUNTER_DESC_VERSION 1 /* Counter description value for firmware version. */
+
+#ifdef PM_S0_OFFSET /* partition manager available */
+/* upgradable mcuboot bootloader option, to validate and select which mcuboot slot to boot:
+ * optional trailer at the end of of flash partitions for mcuboot slot0 and slot1
+ * 1) mcuboot erase flash sector for mcuboot_image_trailer
+ * 2) mcuboot writes new image to flash (e.g. "mcumgr image upload")
+ * 3) mcuboot writes mcuboot_image_trailer with value mcuboot_image_trailer_init as final step of image upload
+ * 4) device is rebooted via "mcumgr reboot" or external reset
+ * 5) b0 checks if one or both mcuboot slots have a trailer.magic, if not normal boot proceeds
+ * 6) b0 updates mcuboot_image_trailer.status appropriately:
+ *    From TESTING to BOOTING (if any TESTING)
+ *    From BOOTING to INACTIVE (if any BOOTING)
+ * 7) b0 gives a slot 1st priority if its trailer.status=TESTING
+	  otherwise it prioritizes trailer.status=ACTIVE
+ * 8) mcuboot changes trailer.status of booted image to ACTIVE if confirmed by "mcumgr image confirm"
+ *    and simultaneously marks the not-booted image as INACTIVE
+ * NOTE: if any image fails to validate, the other bank will still be attempted as well.
+ *       Hence b0 can "fallback" to an image otherwise marked as INACTIVE.
+ */
+
+/* Note1: interface cloned by mcuboot/boot/boot_serial/src/boot_serial.c */
+/* Note2: these constants rely on bits in flash can be changed from 1 to 0 without erasing */
+#define MCUBOOT_IMAGE_TRAILER_STATUS_UNKNOWN  0xFFFFFFFF
+#define MCUBOOT_IMAGE_TRAILER_STATUS_TESTING  0xFFFFFFFE
+#define MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING  0xFFFFFFFC
+#define MCUBOOT_IMAGE_TRAILER_STATUS_ACTIVE   0xFFFFFFF8
+#define MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE 0x00000000
+#define MCUBOOT_IMAGE_TRAILER_MAGIC_SZ 3
+
+typedef struct {
+    uint32_t status; /* mcuboot writes TESTING or ACTIVE, b0 writes BOOTING if TESTING found */
+    uint32_t magic[MCUBOOT_IMAGE_TRAILER_MAGIC_SZ]; /* mcuboot writes*/
+} mcuboot_image_trailer;
+
+const mcuboot_image_trailer mcuboot_image_trailer_init = {
+	.status = MCUBOOT_IMAGE_TRAILER_STATUS_TESTING,
+	.magic = {
+		0x1234beef,
+		0xbeef1234,
+		0x1234beef
+	}
+};
+
+static uint32_t check_and_fix_image_trailer(const char* prefix, const mcuboot_image_trailer* trailer)
+{
+	int result = MCUBOOT_IMAGE_TRAILER_STATUS_UNKNOWN;
+	if (memcmp(&trailer->magic, &mcuboot_image_trailer_init.magic, sizeof(trailer->magic)) == 0) {
+		result = trailer->status;
+		switch (trailer->status) {
+		case MCUBOOT_IMAGE_TRAILER_STATUS_TESTING:
+			/* change status to BOOTING */
+			printk("%s: TESTING => BOOTING\n\r", prefix);
+			__DSB(); /* Because of nRF9160 Erratum 7 */
+			nrfx_nvmc_word_write((uint32_t)&trailer->status, MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING:
+			printk("%s: BOOTING => INACTIVE (boot once)\n\r", prefix);
+			__DSB(); /* Because of nRF9160 Erratum 7 */
+			nrfx_nvmc_word_write((uint32_t)&trailer->status, MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_ACTIVE:
+			printk("%s: ACTIVE\n\r", prefix);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_INACTIVE:
+			printk("%s: INACTIVE\n\r", prefix);
+			break;
+		case MCUBOOT_IMAGE_TRAILER_STATUS_UNKNOWN:
+			printk("%s: UNKNOWN\n\r", prefix);
+			break;
+		default:
+			printk("%s: UNKNOWN, status=0x%"PRIu32"\n\r", prefix, trailer->status);
+		}
+	} else {
+		printk("%s: UNKNOWN (no image trailer)\n\r", prefix);
+	}
+	return result;
+}
+
+slot_priority slot_priority_from_image_trailers(void)
+{
+	/* preserve behavior of b0 if no magic headers are present, by "prioritizing" S0 as default */
+	int result = SLOT_PRIORITY_S0;
+	uint32_t s0_addr = s0_address_read();
+	uint32_t s1_addr = s1_address_read();
+	/* sanity check that the addresses from "provisioning" and the PM config match */
+	if (s0_addr == PM_S0_OFFSET && s1_addr == PM_S1_OFFSET) {
+		const mcuboot_image_trailer* s0 = (mcuboot_image_trailer*)(s0_addr + PM_S0_SIZE - sizeof(mcuboot_image_trailer));
+		const mcuboot_image_trailer* s1 = (mcuboot_image_trailer*)(s1_addr + PM_S1_SIZE - sizeof(mcuboot_image_trailer));
+		uint32_t s0_status = check_and_fix_image_trailer("slot0", s0);
+		uint32_t s1_status = check_and_fix_image_trailer("slot1", s1);
+		switch (s1_status) {
+		case MCUBOOT_IMAGE_TRAILER_STATUS_TESTING:
+		case MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING:
+		case MCUBOOT_IMAGE_TRAILER_STATUS_ACTIVE:
+			switch (s0_status) {
+			case MCUBOOT_IMAGE_TRAILER_STATUS_TESTING:
+			case MCUBOOT_IMAGE_TRAILER_STATUS_BOOTING:
+				break; /* SLOT_PRIORITY_S0 */
+			default:
+				result = SLOT_PRIORITY_S1;
+			}
+		}
+	}
+	return result;
+}
+
+#else
+
+slot_priority slot_priority_from_image_trailers(void)
+{
+	return SLOT_PRIORITY_S0;
+}
+#endif
+
 
 uint32_t s0_address_read(void)
 {

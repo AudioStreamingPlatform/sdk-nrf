@@ -92,8 +92,15 @@ void main(void)
 	uint32_t s1_addr = s1_address_read();
 	const struct fw_info *s0_info = fw_info_find(s0_addr);
 	const struct fw_info *s1_info = fw_info_find(s1_addr);
+	slot_priority priority = slot_priority_from_image_trailers();
 
-	if (!s1_info || (s0_info->version >= s1_info->version)) {
+	if (s0_info && s1_info && (s0_info->version != s1_info->version)) {
+		if (s0_info->version > s1_info->version)
+			priority = SLOT_PRIORITY_S0;
+		else if (s1_info->version > s0_info->version)
+			priority = SLOT_PRIORITY_S1;
+	}
+	if (priority == SLOT_PRIORITY_S0) {
 		validate_and_boot(s0_info, BOOT_SLOT_0);
 		validate_and_boot(s1_info, BOOT_SLOT_1);
 	} else {

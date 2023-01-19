@@ -96,6 +96,23 @@ uint32_t s0_address_read(void);
 uint32_t s1_address_read(void);
 
 /**
+ * @brief Is slot0 or slot1 the highest priority
+ */
+typedef enum slot_priority {
+	SLOT_PRIORITY_S0 = 0,
+	SLOT_PRIORITY_S1 = 1
+} slot_priority;
+
+/**
+ * @brief Function that checks from optional mcuboot s0/s1 image trailer
+ *        if slot#1 should have priority over slot#0.
+ *        Might also update status in trailer(s) from TESTING to BOOTING
+ *
+ * @retval	SLOT_PRIORITY_S0 or SLOT_PRIORITY_S1
+ */
+slot_priority slot_priority_from_image_trailers(void);
+
+/**
  * @brief Function for reading number of public key data slots.
  *
  * @return Number of public key data slots.
