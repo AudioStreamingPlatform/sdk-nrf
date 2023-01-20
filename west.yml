@@ -109,7 +109,7 @@ manifest:
       revision: 49fddb8f5bb9511cf8d9e56bf680576b26fe2fc8
     - name: mcuboot
       repo-path: sdk-mcuboot
-      revision: v1.9.99-ncs3-mozart-v3
+      revision: v1.9.99-ncs3-mozart-v4
       path: bootloader/mcuboot
       remote: mozart
     - name: mbedtls-nrf
